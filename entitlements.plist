@@ -11,6 +11,10 @@
 		<string>data-allowed-write</string>
 	</array>
 	<key>com.apple.private.security.container-required</key>
+	<false/>
+	<key>com.apple.private.security.no-sandbox</key>
+	<true/>
+	<key>com.apple.private.security.no-container</key>
 	<true/>
 	<key>com.apple.private.coreservices.canmaplsdatabase</key>
 	<true/>
@@ -30,13 +34,13 @@
 	</array>
 	<key>com.apple.mobile.deleted.AllowFreeSpace</key>
 	<true/>
-	<key>com.apple.private.security.no-sandbox</key>
-	<true/>
 	<key>com.apple.private.security.container-manager</key>
 	<true/>
 	<key>com.apple.private.MobileContainerManager.allowed</key>
 	<true/>
 	<key>com.apple.private.security.storage.AppBundles</key>
+	<true/>
+	<key>com.apple.private.security.storage.AppData</key>
 	<true/>
 	<key>com.apple.private.security.storage.MobileDocuments</key>
 	<true/>
@@ -49,6 +53,72 @@
 	<key>com.apple.CommCenter.fine-grained</key>
 	<array>
 		<string>data-allowed-write</string>
+	</array>
+	<key>com.apple.private.security.disk-device-access</key>
+	<true/>
+	<key>com.apple.private.security.storage.SystemConfiguration</key>
+	<true/>
+	<key>com.apple.rootless.storage.MobileApps</key>
+	<true/>
+	<key>com.apple.private.security.storage-exempt</key>
+	<true/>
+	<key>com.apple.private.security.storage.bundles</key>
+	<true/>
+	<key>com.apple.private.security.storage.app-bundles</key>
+	<true/>
+	<key>com.apple.private.security.storage.app-data</key>
+	<true/>
+	<key>com.apple.private.security.storage.containers</key>
+	<true/>
+	<key>com.apple.private.security.storage.app-containers</key>
+	<true/>
+	<key>com.apple.private.security.storage.mobile-containers</key>
+	<true/>
+	<key>com.apple.private.security.storage.bundle-containers</key>
+	<true/>
+	<key>com.apple.private.security.no-app-sandbox</key>
+	<true/>
+	<key>com.apple.private.security.no-app-container</key>
+	<true/>
+	<key>com.apple.private.security.get-task-allow</key>
+	<true/>
+	<key>com.apple.private.security.task-for-pid-allow</key>
+	<true/>
+	<key>com.apple.private.spawn-allowed</key>
+	<true/>
+	<key>com.apple.private.security.spawn-with-elevated-privileges</key>
+	<true/>
+	<key>com.apple.private.security.spawn-with-root-privileges</key>
+	<true/>
+	<key>platform-application</key>
+	<true/>
+	<key>com.apple.private.persona-mgmt</key>
+	<true/>
+	<key>com.apple.private.security.storage.AppDataContainers</key>
+	<true/>
+	<key>task_for_pid-allow</key>
+	<true/>
+	<key>get-task-allow</key>
+	<true/>
+	<key>com.apple.security.get-task-allow</key>
+	<true/>
+	<key>proc_info-allow</key>
+	<true/>
+	<key>com.apple.system-task-ports</key>
+	<true/>
+	<key>com.apple.springboard.launchapplications</key>
+	<true/>
+	<key>com.apple.security.exception.iokit-user-client-class</key>
+	<array>
+		<string>IOUserClient</string>
+		<string>IOUserServer</string>
+		<string>RootDomainUserClient</string>
+	</array>
+	<key>com.apple.security.iokit-user-client-class</key>
+	<array>
+		<string>IOUserClient</string>
+		<string>IOUserServer</string>
+		<string>RootDomainUserClient</string>
 	</array>
 </dict>
 </plist>

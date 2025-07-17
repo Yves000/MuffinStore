@@ -60,8 +60,10 @@
 	</array>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
 	<key>UILaunchImageFile</key>
 	<string>LaunchImage</string>
 	<key>UILaunchImages</key>
