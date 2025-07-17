@@ -142,7 +142,7 @@ class AppListViewController: UIViewController {
     }
     
     private func setupUI() {
-        title = "MuffinStore"
+        title = "Apps"
         view.backgroundColor = .systemGroupedBackground
         
         navigationItem.searchController = searchController
@@ -267,10 +267,15 @@ class AppListViewController: UIViewController {
             navigationItem.leftBarButtonItem = cancelButton
             navigationItem.rightBarButtonItem = doneButton
             
+            // Update title to show selection count
+            updateSelectionTitle()
+            
             // Show block/unblock toggle buttons in toolbar
             updateSelectionModeButtons()
         } else {
             // Reset to normal state
+            title = "Apps"
+            
             let menuButton = UIBarButtonItem(
                 image: UIImage(systemName: "ellipsis.circle"),
                 style: .plain,
@@ -291,6 +296,17 @@ class AppListViewController: UIViewController {
             
             // Hide toolbar
             navigationController?.setToolbarHidden(true, animated: true)
+        }
+    }
+    
+    private func updateSelectionTitle() {
+        let count = selectedApps.count
+        if count == 0 {
+            title = "Select Apps"
+        } else if count == 1 {
+            title = "1 App Selected"
+        } else {
+            title = "\(count) Apps Selected"
         }
     }
     
@@ -347,6 +363,7 @@ class AppListViewController: UIViewController {
     @objc private func switchToBlockMode() {
         currentSelectionMode = .block
         selectedApps.removeAll()
+        updateSelectionTitle()
         updateSelectionModeButtons()
         reloadAppList()
     }
@@ -354,6 +371,7 @@ class AppListViewController: UIViewController {
     @objc private func switchToUnblockMode() {
         currentSelectionMode = .unblock
         selectedApps.removeAll()
+        updateSelectionTitle()
         updateSelectionModeButtons()
         reloadAppList()
     }
@@ -2217,6 +2235,7 @@ extension AppListViewController: UITableViewDelegate {
         if isSelectMode {
             // In select mode, track selection (editing mode handles UI)
             selectedApps.insert(indexPath)
+            updateSelectionTitle()
         } else {
             // In normal mode, deselect and perform action
             tableView.deselectRow(at: indexPath, animated: true)
@@ -2228,6 +2247,7 @@ extension AppListViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didDeselectRowAt indexPath: IndexPath) {
         if isSelectMode {
             selectedApps.remove(indexPath)
+            updateSelectionTitle()
         }
     }
     

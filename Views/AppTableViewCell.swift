@@ -6,7 +6,7 @@ class AppTableViewCell: UITableViewCell {
     private let appIconImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFit
-        imageView.layer.cornerRadius = 12
+        imageView.layer.cornerRadius = 13.33
         imageView.layer.cornerCurve = .continuous
         imageView.layer.borderWidth = 0.33
         imageView.clipsToBounds = true
