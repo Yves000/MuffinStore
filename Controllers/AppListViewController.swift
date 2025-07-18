@@ -2,61 +2,6 @@ import UIKit
 import MobileCoreServices
 import Foundation
 
-enum VersionSelectionMethod: String, CaseIterable {
-    case askEachTime = "ask"
-    case appStore = "appstore"
-    case manual = "manual"
-    
-    var title: String {
-        switch self {
-        case .askEachTime: return "Ask Each Time"
-        case .appStore: return "App Store"
-        case .manual: return "Manual"
-        }
-    }
-}
-
-enum SortOrder: CaseIterable {
-    case alphabeticalAZ
-    case alphabeticalZA
-    
-    var title: String {
-        switch self {
-        case .alphabeticalAZ: return "A-Z"
-        case .alphabeticalZA: return "Z-A"
-        }
-    }
-}
-
-enum SelectionMode {
-    case block
-    case unblock
-    
-    var title: String {
-        switch self {
-        case .block: return "Block Updates"
-        case .unblock: return "Unblock Updates"
-        }
-    }
-}
-
-enum FilterType: CaseIterable {
-    case all
-    case blockedUpdates
-    case unblockedUpdates
-    case spoofedVersions
-    case unspoofedVersions
-    
-    var title: String {
-        switch self {
-        case .all: return "All Apps"
-        case .blockedUpdates: return "Update Blocked"
-        case .unblockedUpdates: return "Updates Allowed"
-        case .spoofedVersions: return "Version Spoofed"
-        case .unspoofedVersions: return "Original Version"
-        }
-    }
-}
 
 class AppListViewController: UIViewController {
     

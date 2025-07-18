@@ -1,31 +1,5 @@
 import UIKit
 
-enum VersionSelectionType {
-    case download
-    case spoof
-    
-    var title: String {
-        switch self {
-        case .download: return "Download Version Selection"
-        case .spoof: return "Spoof Version Selection"
-        }
-    }
-    
-    var userDefaultsKey: String {
-        switch self {
-        case .download: return "downloadVersionSelectionMethod"
-        case .spoof: return "spoofVersionSelectionMethod"
-        }
-    }
-    
-    var description: String {
-        switch self {
-        case .download: return "Choose your preferred method for downloading app versions. This will skip the dialog when using the download feature."
-        case .spoof: return "Choose your preferred method for spoofing app versions. This will skip the dialog when using the spoof feature."
-        }
-    }
-}
-
 class VersionSelectionViewController: UITableViewController {
     
     private let type: VersionSelectionType

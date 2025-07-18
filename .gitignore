@@ -1,3 +1,31 @@
+# Theos build artifacts
 .theos/
 packages/
+*.deb
+*.tipa
+
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+*.xcodeproj
+*.xcworkspace
+*.xcuserdata
+DerivedData/
+
+# Build artifacts
+obj/
+*.o
+*.a
+*.so
+*.dylib
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Log files
+*.log
