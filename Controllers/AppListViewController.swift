@@ -2617,7 +2617,15 @@ extension AppListViewController: UITableViewDelegate {
                 }
             }
             
-            return UIMenu(children: [openAction, updateAction, blockAction, spoofAction])
+            // Open in App Store Action
+            let appStoreAction = UIAction(
+                title: "Open in App Store",
+                image: UIImage(systemName: "bag.circle")
+            ) { _ in
+                self.openAppInAppStore(app: app)
+            }
+            
+            return UIMenu(children: [openAction, appStoreAction, updateAction, blockAction, spoofAction])
         }
     }
     
@@ -2668,6 +2676,87 @@ extension AppListViewController: UISearchResultsUpdating {
         DispatchQueue.main.async {
             self.updateNoResultsView()
             self.tableView.reloadData()
+        }
+    }
+    
+    // MARK: - App Store Integration
+    
+    private func openAppInAppStore(app: AppModel) {
+        debugLog("🏪 Opening app in App Store: \(app.name)")
+        
+        // Try to extract itemID from iTunesMetadata.plist
+        if let itemID = extractItemIDFromiTunesMetadata(app: app) {
+            debugLog("✅ Found itemID: \(itemID)")
+            openAppStoreWithItemID(itemID)
+        } else {
+            debugLog("❌ Could not find itemID, searching via app name")
+            searchAppStoreWithAppName(app.name)
+        }
+    }
+    
+    private func extractItemIDFromiTunesMetadata(app: AppModel) -> String? {
+        // iTunesMetadata.plist is in the parent directory of the .app bundle
+        let iTunesMetadataPath = app.bundleURL.deletingLastPathComponent().appendingPathComponent("iTunesMetadata.plist").path
+        
+        guard FileManager.default.fileExists(atPath: iTunesMetadataPath) else {
+            debugLog("❌ iTunesMetadata.plist not found at: \(iTunesMetadataPath)")
+            return nil
+        }
+        
+        guard let metadata = NSDictionary(contentsOfFile: iTunesMetadataPath) else {
+            debugLog("❌ Could not read iTunesMetadata.plist")
+            return nil
+        }
+        
+        // Try different possible keys for the item ID
+        let possibleKeys = ["itemId", "itemID", "playlistId", "trackId", "softwareVersionBundleId", "itemIdentifier"]
+        
+        for key in possibleKeys {
+            if let itemID = metadata[key] {
+                let itemIDString = "\(itemID)"
+                debugLog("✅ Found itemID '\(itemIDString)' using key: \(key)")
+                return itemIDString
+            }
+        }
+        
+        debugLog("❌ No itemID found in iTunesMetadata.plist")
+        debugLog("📚 Available keys: \(metadata.allKeys)")
+        return nil
+    }
+    
+    private func openAppStoreWithItemID(_ itemID: String) {
+        let appStoreURL = "https://apps.apple.com/app/id\(itemID)"
+        debugLog("🔗 Opening App Store URL: \(appStoreURL)")
+        
+        if let url = URL(string: appStoreURL) {
+            UIApplication.shared.open(url) { success in
+                if success {
+                    self.debugLog("✅ Successfully opened App Store")
+                } else {
+                    self.debugLog("❌ Failed to open App Store")
+                }
+            }
+        } else {
+            debugLog("❌ Invalid App Store URL")
+        }
+    }
+    
+    private func searchAppStoreWithAppName(_ appName: String) {
+        // Fallback: search App Store using app name
+        let encodedAppName = appName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? appName
+        let searchURL = "https://apps.apple.com/search?term=\(encodedAppName)"
+        debugLog("🔍 Searching App Store with app name: \(searchURL)")
+        
+        if let url = URL(string: searchURL) {
+            UIApplication.shared.open(url) { success in
+                if success {
+                    self.debugLog("✅ Successfully opened App Store search")
+                } else {
+                    self.debugLog("❌ Failed to open App Store search")
+                }
+            }
+        } else {
+            debugLog("❌ Invalid App Store search URL")
         }
     }
 }
