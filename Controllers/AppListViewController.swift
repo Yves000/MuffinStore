@@ -19,6 +19,11 @@ class AppListViewController: UIViewController {
     var debugMessages: [String] = []
     private var loadingAlert: UIAlertController?
     
+    // Empty state views
+    private var noResultsImageView: UIImageView!
+    private var noResultsTitleLabel: UILabel!
+    private var noResultsMessageLabel: UILabel!
+    
     // MARK: - Preferences
     private var downloadVersionSelectionMethod: VersionSelectionMethod {
         get {
@@ -67,41 +72,42 @@ class AppListViewController: UIViewController {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isHidden = true
         
-        let imageView = UIImageView(image: UIImage(systemName: "magnifyingglass"))
-        imageView.tintColor = .secondaryLabel
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
+        noResultsImageView = UIImageView(image: UIImage(systemName: "magnifyingglass"))
+        noResultsImageView.tintColor = .secondaryLabel
+        noResultsImageView.contentMode = .scaleAspectFit
+        noResultsImageView.translatesAutoresizingMaskIntoConstraints = false
         
-        let titleLabel = UILabel()
-        titleLabel.text = "No Results"
-        titleLabel.font = UIFont.systemFont(ofSize: 22, weight: .medium)
-        titleLabel.textColor = .secondaryLabel
-        titleLabel.textAlignment = .center
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        noResultsTitleLabel = UILabel()
+        noResultsTitleLabel.text = "No Results"
+        noResultsTitleLabel.font = UIFont.systemFont(ofSize: 22, weight: .medium)
+        noResultsTitleLabel.textColor = .secondaryLabel
+        noResultsTitleLabel.textAlignment = .center
+        noResultsTitleLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        let messageLabel = UILabel()
-        messageLabel.text = "No apps match your search"
-        messageLabel.font = UIFont.systemFont(ofSize: 16, weight: .regular)
-        messageLabel.textColor = .tertiaryLabel
-        messageLabel.textAlignment = .center
-        messageLabel.translatesAutoresizingMaskIntoConstraints = false
+        noResultsMessageLabel = UILabel()
+        noResultsMessageLabel.text = "No apps match your search"
+        noResultsMessageLabel.font = UIFont.systemFont(ofSize: 16, weight: .regular)
+        noResultsMessageLabel.textColor = .tertiaryLabel
+        noResultsMessageLabel.textAlignment = .center
+        noResultsMessageLabel.numberOfLines = 0
+        noResultsMessageLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        view.addSubview(imageView)
-        view.addSubview(titleLabel)
-        view.addSubview(messageLabel)
+        view.addSubview(noResultsImageView)
+        view.addSubview(noResultsTitleLabel)
+        view.addSubview(noResultsMessageLabel)
         
         NSLayoutConstraint.activate([
-            imageView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            imageView.widthAnchor.constraint(equalToConstant: 64),
-            imageView.heightAnchor.constraint(equalToConstant: 64),
+            noResultsImageView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            noResultsImageView.widthAnchor.constraint(equalToConstant: 64),
+            noResultsImageView.heightAnchor.constraint(equalToConstant: 64),
             
-            titleLabel.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 16),
-            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            noResultsTitleLabel.topAnchor.constraint(equalTo: noResultsImageView.bottomAnchor, constant: 16),
+            noResultsTitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            noResultsTitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
             
-            messageLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            messageLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            messageLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32)
+            noResultsMessageLabel.topAnchor.constraint(equalTo: noResultsTitleLabel.bottomAnchor, constant: 8),
+            noResultsMessageLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            noResultsMessageLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32)
         ])
         
         return view
@@ -1955,6 +1961,7 @@ class AppListViewController: UIViewController {
         }
         
         sortApps()
+        updateNoResultsView()
     }
     
     private func applyCurrentFilter(to apps: [AppModel]) -> [AppModel] {
@@ -2053,9 +2060,55 @@ class AppListViewController: UIViewController {
     }
     
     private func updateNoResultsView() {
-        let shouldShowNoResults = isSearching && filteredApps.isEmpty
+        let shouldShowNoResults = filteredApps.isEmpty && !apps.isEmpty
+        
+        if shouldShowNoResults {
+            configureEmptyState()
+        }
+        
         noResultsView.isHidden = !shouldShowNoResults
-        tableView.isHidden = shouldShowNoResults
+        // Don't hide the table view, just show the empty state on top
+    }
+    
+    private func configureEmptyState() {
+        if searchController.isActive && !searchController.searchBar.text!.isEmpty {
+            // Search-specific empty state
+            noResultsImageView.image = UIImage(systemName: "magnifyingglass")
+            noResultsTitleLabel.text = "No Results"
+            noResultsMessageLabel.text = "No apps match your search"
+        } else {
+            // Filter-specific empty state
+            configureFilterEmptyState()
+        }
+    }
+    
+    private func configureFilterEmptyState() {
+        switch currentFilterType {
+        case .all:
+            noResultsImageView.image = UIImage(systemName: "apps.iphone")
+            noResultsTitleLabel.text = "No Apps Found"
+            noResultsMessageLabel.text = "No apps are currently installed"
+            
+        case .blockedUpdates:
+            noResultsImageView.image = UIImage(systemName: "shield.slash")
+            noResultsTitleLabel.text = "No Blocked Updates"
+            noResultsMessageLabel.text = "You haven't blocked any app updates yet"
+            
+        case .unblockedUpdates:
+            noResultsImageView.image = UIImage(systemName: "shield")
+            noResultsTitleLabel.text = "No Allowed Updates"
+            noResultsMessageLabel.text = "All your apps have blocked updates"
+            
+        case .spoofedVersions:
+            noResultsImageView.image = UIImage(systemName: "theatermasks")
+            noResultsTitleLabel.text = "No Spoofed Versions"
+            noResultsMessageLabel.text = "You haven't spoofed any app versions yet"
+            
+        case .unspoofedVersions:
+            noResultsImageView.image = UIImage(systemName: "number.circle")
+            noResultsTitleLabel.text = "No Original Versions"
+            noResultsMessageLabel.text = "All your apps have spoofed versions"
+        }
     }
     
     private func setupKeyboardNotifications() {
