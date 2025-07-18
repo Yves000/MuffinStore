@@ -1845,10 +1845,18 @@ class AppListViewController: UIViewController {
         }.resume()
     }
     
-    private func showVersionListAlert(for appId: Int64, versions: [[String: Any]]) {
+    private func showVersionListAlert(for appId: Int64, versions: [[String: Any]], app: AppModel? = nil) {
+        debugLog("📋 showVersionListAlert called for appId: \(appId)")
+        debugLog("📋 app parameter: \(app?.name ?? "nil")")
+        debugLog("📋 currentAppForVersionSelection: \(currentAppForVersionSelection?.name ?? "nil")")
+        
+        // Get current installed version for reference
+        let currentVersionMessage = getCurrentVersionMessage(for: appId)
+        debugLog("📋 Generated version message: \(currentVersionMessage)")
+        
         let alert = UIAlertController(
             title: "Select Version",
-            message: "Choose which version to download",
+            message: "Choose which version to download\n\n\(currentVersionMessage)",
             preferredStyle: .actionSheet
         )
         
@@ -1875,11 +1883,123 @@ class AppListViewController: UIViewController {
         present(alert, animated: true)
     }
     
+    // Store the current app being processed for version selection
+    private var currentAppForVersionSelection: AppModel?
+    
+    private func getCurrentVersionMessage(for appId: Int64) -> String {
+        debugLog("🔍 getCurrentVersionMessage called with appId: \(appId)")
+        debugLog("🔍 currentAppForVersionSelection: \(currentAppForVersionSelection?.name ?? "nil")")
+        
+        // Use the stored app if available, otherwise try to find it
+        let targetApp = currentAppForVersionSelection ?? apps.first { app in
+            // Try to match by comparing trackIds if we have API data
+            // For now, return the first app as fallback (this is the bug)
+            debugLog("🔍 Trying to match app: \(app.name) with appId: \(appId)")
+            return false
+        }
+        
+        guard let app = targetApp else {
+            debugLog("❌ No target app found, returning Unknown")
+            return "Currently installed: Unknown"
+        }
+        
+        debugLog("✅ Found target app: \(app.name), version: \(app.version), bundleId: \(app.bundleIdentifier)")
+        
+        // Check if app is spoofed
+        if let originalVersion = spoofedApps[app.bundleIdentifier] {
+            debugLog("🎭 App is spoofed. Original: \(originalVersion), Displayed: \(app.version)")
+            return "Currently installed: \(originalVersion) (Original)\nDisplayed version: \(app.version) (Spoofed)"
+        } else {
+            debugLog("📱 App is not spoofed. Version: \(app.version)")
+            return "Currently installed: \(app.version)"
+        }
+    }
+    
+    private func showSpoofedAppUpdateWarning(for app: AppModel) {
+        let alert = UIAlertController(
+            title: "Spoofed App Warning",
+            message: "This app (\(app.name)) currently has a spoofed version. After updating/downgrading, the app version will no longer be spoofed and you will need to spoof it again if desired.\n\nDo you want to continue?",
+            preferredStyle: .alert
+        )
+        
+        let continueAction = UIAlertAction(title: "Continue", style: .default) { [weak self] _ in
+            self?.proceedWithDownload(for: app)
+        }
+        
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
+        
+        alert.addAction(continueAction)
+        alert.addAction(cancelAction)
+        
+        present(alert, animated: true)
+    }
+    
+    private func proceedWithDownload(for app: AppModel) {
+        debugLog("🚀 proceedWithDownload called for app: \(app.name), version: \(app.version)")
+        
+        // Store the current app for version selection
+        currentAppForVersionSelection = app
+        debugLog("💾 Stored currentAppForVersionSelection: \(app.name)")
+        
+        let infoPlistPath = app.bundleURL.appendingPathComponent("Info.plist").path
+        guard let infoPlist = NSDictionary(contentsOfFile: infoPlistPath),
+              let bundleId = infoPlist["CFBundleIdentifier"] as? String else {
+            showAlert(title: "Error", message: "Could not read app info")
+            return
+        }
+        
+        let url = "https://itunes.apple.com/lookup?bundleId=\(bundleId)&limit=1&media=software"
+        guard let requestURL = URL(string: url) else { return }
+        
+        URLSession.shared.dataTask(with: requestURL) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self?.showAlert(title: "Error", message: error.localizedDescription)
+                    return
+                }
+                
+                guard let data = data else {
+                    self?.showAlert(title: "Error", message: "No data received")
+                    return
+                }
+                
+                do {
+                    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                    let results = json?["results"] as? [[String: Any]] ?? []
+                    
+                    if results.isEmpty {
+                        self?.showAlert(title: "Error", message: "No results")
+                        return
+                    }
+                    
+                    if let trackId = results[0]["trackId"] as? Int64,
+                       let appName = results[0]["trackName"] as? String {
+                        self?.showVersionSelectionAlert(for: trackId, appName: appName)
+                    }
+                } catch {
+                    self?.showAlert(title: "JSON Error", message: error.localizedDescription)
+                }
+            }
+        }.resume()
+    }
+    
     private func downloadApp(appId: Int64, versionId: Int64) {
         StoreKitDownloader.sharedInstance().downloadApp(withAppId: appId, versionId: versionId)
     }
     
     private func downloadAppShortcut(for app: AppModel) {
+        debugLog("🚀 downloadAppShortcut called for app: \(app.name), version: \(app.version)")
+        
+        // Check if app is spoofed and show warning
+        if spoofedApps[app.bundleIdentifier] != nil {
+            showSpoofedAppUpdateWarning(for: app)
+            return
+        }
+        
+        // Store the current app for version selection
+        currentAppForVersionSelection = app
+        debugLog("💾 Stored currentAppForVersionSelection: \(app.name)")
+        
         let infoPlistPath = app.bundleURL.appendingPathComponent("Info.plist").path
         guard let infoPlist = NSDictionary(contentsOfFile: infoPlistPath),
               let bundleId = infoPlist["CFBundleIdentifier"] as? String else {
@@ -2376,9 +2496,12 @@ class AppListViewController: UIViewController {
     }
     
     private func showVersionSpoofListAlert(for app: AppModel, versions: [[String: Any]]) {
+        // Get current version message for reference
+        let currentVersionMessage = getCurrentVersionMessageForApp(app: app)
+        
         let alert = UIAlertController(
             title: "Select Version to Spoof",
-            message: "Choose a version for \(app.name)",
+            message: "Choose a version for \(app.name)\n\n\(currentVersionMessage)",
             preferredStyle: .actionSheet
         )
         
@@ -2401,6 +2524,19 @@ class AppListViewController: UIViewController {
         }
         
         present(alert, animated: true)
+    }
+    
+    private func getCurrentVersionMessageForApp(app: AppModel) -> String {
+        debugLog("🔍 getCurrentVersionMessageForApp called for app: \(app.name), version: \(app.version)")
+        
+        // Check if app is spoofed
+        if let originalVersion = spoofedApps[app.bundleIdentifier] {
+            debugLog("🎭 App is spoofed. Original: \(originalVersion), Displayed: \(app.version)")
+            return "Currently installed: \(originalVersion) (Original)\nDisplayed version: \(app.version) (Spoofed)"
+        } else {
+            debugLog("📱 App is not spoofed. Version: \(app.version)")
+            return "Currently installed: \(app.version)"
+        }
     }
     
     private func spoofAppVersion(app: AppModel, version: String) {
