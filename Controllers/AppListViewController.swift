@@ -57,7 +57,7 @@ class AppListViewController: UIViewController {
     private var selectedApps: Set<IndexPath> = []
     private var blockedApps: [String: String] = [:] // bundleId -> originalVersion
     private var spoofedApps: [String: String] = [:] // bundleId -> originalVersion
-    private var debugMessages: [String] = []
+    var debugMessages: [String] = []
     private var loadingAlert: UIAlertController?
     
     private lazy var searchController: UISearchController = {
@@ -228,15 +228,15 @@ class AppListViewController: UIViewController {
             self?.toggleSelectMode()
         }
         
-        // Debug action
-        let debugAction = UIAction(
-            title: "Debug Log",
-            image: UIImage(systemName: "terminal")
+        // Settings action
+        let settingsAction = UIAction(
+            title: "Settings",
+            image: UIImage(systemName: "gear")
         ) { [weak self] _ in
-            self?.showDebugLog()
+            self?.showSettings()
         }
         
-        return UIMenu(title: "", children: [sortMenu, filterMenu, selectAction, debugAction])
+        return UIMenu(title: "", children: [sortMenu, filterMenu, selectAction, settingsAction])
     }
     
     private func updateMainMenu() {
@@ -389,7 +389,25 @@ class AppListViewController: UIViewController {
         }
     }
     
-    private func showDebugLog() {
+    @objc private func showSettings() {
+        let settingsController = SettingsViewController(appListController: self)
+        let navigationController = UINavigationController(rootViewController: settingsController)
+        
+        // iOS 15+ sheet presentation
+        if #available(iOS 15.0, *) {
+            if let sheet = navigationController.sheetPresentationController {
+                sheet.detents = [.medium()]
+                sheet.prefersGrabberVisible = true
+            }
+        } else {
+            // iOS 14 fallback - full screen modal
+            navigationController.modalPresentationStyle = .formSheet
+        }
+        
+        present(navigationController, animated: true)
+    }
+    
+    func showDebugLog() {
         let debugText = debugMessages.isEmpty ? "No debug messages yet" : debugMessages.joined(separator: "\n")
         
         let alertController = UIAlertController(
@@ -414,6 +432,135 @@ class AppListViewController: UIViewController {
         alertController.addAction(okAction)
         
         present(alertController, animated: true)
+    }
+    
+    // MARK: - Reset Functions
+    
+    func resetAllChanges() {
+        debugLog("🔄 Starting reset all changes...")
+        
+        showLoadingDialog(title: "Resetting All Changes", message: "Restoring all apps to original state...")
+        
+        DispatchQueue.global(qos: .default).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Reset all spoofed versions first (no UI cache needed)
+            self.resetAllVersionsInternal()
+            
+            // Then unblock all updates (with UI cache rebuild)
+            self.unblockAllUpdatesInternal()
+            
+            DispatchQueue.main.async {
+                self.hideLoadingDialog()
+                self.showAlert(title: "Reset Complete", message: "All changes have been reset. Your device will respring shortly.")
+            }
+        }
+    }
+    
+    func unblockAllUpdates() {
+        debugLog("🔄 Starting unblock all updates...")
+        
+        showLoadingDialog(title: "Unblocking Updates", message: "Restoring update capability for all apps...")
+        
+        DispatchQueue.global(qos: .default).async { [weak self] in
+            guard let self = self else { return }
+            
+            self.unblockAllUpdatesInternal()
+            
+            DispatchQueue.main.async {
+                self.hideLoadingDialog()
+                self.showAlert(title: "Updates Unblocked", message: "All app updates have been unblocked. Your device will respring shortly.")
+            }
+        }
+    }
+    
+    func resetAllVersions() {
+        debugLog("🔄 Starting reset all versions...")
+        
+        showLoadingDialog(title: "Resetting Versions", message: "Restoring original app versions...")
+        
+        DispatchQueue.global(qos: .default).async { [weak self] in
+            guard let self = self else { return }
+            
+            self.resetAllVersionsInternal()
+            
+            DispatchQueue.main.async {
+                self.hideLoadingDialog()
+                self.showAlert(title: "Versions Reset", message: "All app versions have been reset to original.")
+                self.loadInstalledApps() // Reload to show changes
+            }
+        }
+    }
+    
+    private func unblockAllUpdatesInternal() {
+        guard let helperPath = rootHelperPath() else {
+            debugLog("❌ Could not find root helper")
+            return
+        }
+        
+        var restoredCount = 0
+        
+        // Iterate through all blocked apps
+        for bundleIdentifier in blockedApps.keys {
+            // Find the app bundle path
+            if let app = apps.first(where: { $0.bundleIdentifier == bundleIdentifier }) {
+                var stdOut: NSString?
+                var stdErr: NSString?
+                
+                let result = spawnRoot(helperPath, ["restore_updates", app.bundleURL.path], &stdOut, &stdErr)
+                
+                if result == 0 {
+                    restoredCount += 1
+                    debugLog("✅ Restored updates for: \(app.name)")
+                } else {
+                    debugLog("❌ Failed to restore updates for: \(app.name)")
+                }
+            }
+        }
+        
+        // Clear blocked apps list
+        blockedApps.removeAll()
+        saveBlockedApps()
+        
+        debugLog("✅ Restored updates for \(restoredCount) apps")
+        
+        // Rebuild UI cache
+        rebuildUICache()
+    }
+    
+    private func resetAllVersionsInternal() {
+        guard let helperPath = rootHelperPath() else {
+            debugLog("❌ Could not find root helper")
+            return
+        }
+        
+        var restoredCount = 0
+        
+        // Iterate through all spoofed apps
+        for (bundleIdentifier, originalVersion) in spoofedApps {
+            // Find the app bundle path
+            if let app = apps.first(where: { $0.bundleIdentifier == bundleIdentifier }) {
+                var stdOut: NSString?
+                var stdErr: NSString?
+                
+                let result = spawnRoot(helperPath, ["spoof_app_version", app.bundleURL.path, originalVersion], &stdOut, &stdErr)
+                
+                if result == 0 {
+                    restoredCount += 1
+                    debugLog("✅ Restored version for: \(app.name) to \(originalVersion)")
+                } else {
+                    debugLog("❌ Failed to restore version for: \(app.name)")
+                }
+            }
+        }
+        
+        // Clear spoofed apps list
+        spoofedApps.removeAll()
+        saveSpoofedApps()
+        
+        debugLog("✅ Restored versions for \(restoredCount) apps")
+        
+        // No UI cache rebuild needed for version changes
     }
     
     
