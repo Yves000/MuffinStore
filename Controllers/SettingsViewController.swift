@@ -18,6 +18,12 @@ class SettingsViewController: UITableViewController {
         setupUI()
     }
     
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Reload preferences section to update the current selection
+        tableView.reloadRows(at: [IndexPath(row: 0, section: 0)], with: .none)
+    }
+    
     private func setupUI() {
         title = "Settings"
         
@@ -29,6 +35,9 @@ class SettingsViewController: UITableViewController {
         )
         
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Cell")
+        
+        // Register cell with subtitle style for preferences
+        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "SubtitleCell")
     }
     
     @objc private func doneTapped() {
@@ -38,37 +47,55 @@ class SettingsViewController: UITableViewController {
     // MARK: - Table View Data Source
     
     override func numberOfSections(in tableView: UITableView) -> Int {
-        return 2
+        return 3
     }
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch section {
-        case 0: return 3 // Reset options
-        case 1: return 1 // Debug
+        case 0: return 1 // Preferences
+        case 1: return 3 // Reset options
+        case 2: return 1 // Debug
         default: return 0
         }
     }
     
     override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch section {
-        case 0: return "Reset Options"
-        case 1: return "Debug"
+        case 0: return "Preferences"
+        case 1: return "Reset Options"
+        case 2: return "Debug"
         default: return nil
         }
     }
     
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         switch section {
-        case 0: return "These actions will reset modifications made by MuffinStore. Use with caution."
+        case 0: return "Configure your preferred methods for version selection to skip dialogs."
+        case 1: return "These actions will reset modifications made by MuffinStore. Use with caution."
         default: return nil
         }
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
+        let cell: UITableViewCell
+        
+        if indexPath.section == 0 {
+            // Use subtitle style for preferences
+            cell = UITableViewCell(style: .value1, reuseIdentifier: "SubtitleCell")
+        } else {
+            cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
+        }
         
         switch indexPath.section {
         case 0:
+            // Preferences
+            cell.textLabel?.text = "Version Selection"
+            cell.textLabel?.textColor = .label
+            cell.imageView?.image = UIImage(systemName: "gear")
+            cell.imageView?.tintColor = .systemBlue
+            
+        case 1:
+            // Reset options
             switch indexPath.row {
             case 0:
                 cell.textLabel?.text = "Reset All Changes"
@@ -88,7 +115,8 @@ class SettingsViewController: UITableViewController {
             default:
                 break
             }
-        case 1:
+        case 2:
+            // Debug
             cell.textLabel?.text = "Debug Log"
             cell.textLabel?.textColor = .label
             cell.imageView?.image = UIImage(systemName: "terminal")
@@ -108,6 +136,11 @@ class SettingsViewController: UITableViewController {
         
         switch indexPath.section {
         case 0:
+            // Preferences
+            let versionSelectionOverviewVC = VersionSelectionOverviewViewController()
+            navigationController?.pushViewController(versionSelectionOverviewVC, animated: true)
+        case 1:
+            // Reset options
             switch indexPath.row {
             case 0:
                 showResetAllConfirmation()
@@ -118,8 +151,10 @@ class SettingsViewController: UITableViewController {
             default:
                 break
             }
-        case 1:
-            showDebugLog()
+        case 2:
+            // Debug
+            let debugLogVC = DebugLogViewController(debugMessages: appListController?.debugMessages ?? [], appListController: appListController)
+            navigationController?.pushViewController(debugLogVC, animated: true)
         default:
             break
         }
@@ -130,7 +165,7 @@ class SettingsViewController: UITableViewController {
     private func showResetAllConfirmation() {
         let alert = UIAlertController(
             title: "Reset All Changes",
-            message: "This will unblock all app updates and reset all spoofed versions to their original state. Your device will respring when finished.",
+            message: "This will unblock all app updates and reset all spoofed versions to their original state. Your device will respring when finished. Please do not close the app.",
             preferredStyle: .alert
         )
         
@@ -145,7 +180,7 @@ class SettingsViewController: UITableViewController {
     private func showUnblockAllConfirmation() {
         let alert = UIAlertController(
             title: "Unblock All Updates",
-            message: "This will unblock updates for all apps. Your device will respring when finished.",
+            message: "This will unblock updates for all apps. Your device will respring when finished. Please do not close the app.",
             preferredStyle: .alert
         )
         
@@ -187,32 +222,4 @@ class SettingsViewController: UITableViewController {
         dismiss(animated: true)
     }
     
-    private func showDebugLog() {
-        guard let appListController = appListController else { return }
-        
-        let debugText = appListController.debugMessages.isEmpty ? "No debug messages yet" : appListController.debugMessages.joined(separator: "\n")
-        
-        let alertController = UIAlertController(
-            title: "Debug Log",
-            message: debugText,
-            preferredStyle: .alert
-        )
-        
-        // Add copy action
-        let copyAction = UIAlertAction(title: "Copy", style: .default) { _ in
-            UIPasteboard.general.string = debugText
-        }
-        alertController.addAction(copyAction)
-        
-        // Add clear action
-        let clearAction = UIAlertAction(title: "Clear", style: .destructive) { [weak self] _ in
-            self?.appListController?.debugMessages.removeAll()
-        }
-        alertController.addAction(clearAction)
-        
-        let okAction = UIAlertAction(title: "OK", style: .default)
-        alertController.addAction(okAction)
-        
-        present(alertController, animated: true)
-    }
 }

@@ -2,6 +2,20 @@ import UIKit
 import MobileCoreServices
 import Foundation
 
+enum VersionSelectionMethod: String, CaseIterable {
+    case askEachTime = "ask"
+    case appStore = "appstore"
+    case manual = "manual"
+    
+    var title: String {
+        switch self {
+        case .askEachTime: return "Ask Each Time"
+        case .appStore: return "App Store"
+        case .manual: return "Manual"
+        }
+    }
+}
+
 enum SortOrder: CaseIterable {
     case alphabeticalAZ
     case alphabeticalZA
@@ -59,6 +73,27 @@ class AppListViewController: UIViewController {
     private var spoofedApps: [String: String] = [:] // bundleId -> originalVersion
     var debugMessages: [String] = []
     private var loadingAlert: UIAlertController?
+    
+    // MARK: - Preferences
+    private var downloadVersionSelectionMethod: VersionSelectionMethod {
+        get {
+            let rawValue = UserDefaults.standard.string(forKey: "downloadVersionSelectionMethod") ?? VersionSelectionMethod.askEachTime.rawValue
+            return VersionSelectionMethod(rawValue: rawValue) ?? .askEachTime
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "downloadVersionSelectionMethod")
+        }
+    }
+    
+    private var spoofVersionSelectionMethod: VersionSelectionMethod {
+        get {
+            let rawValue = UserDefaults.standard.string(forKey: "spoofVersionSelectionMethod") ?? VersionSelectionMethod.askEachTime.rawValue
+            return VersionSelectionMethod(rawValue: rawValue) ?? .askEachTime
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "spoofVersionSelectionMethod")
+        }
+    }
     
     private lazy var searchController: UISearchController = {
         let searchController = UISearchController(searchResultsController: nil)
@@ -393,16 +428,8 @@ class AppListViewController: UIViewController {
         let settingsController = SettingsViewController(appListController: self)
         let navigationController = UINavigationController(rootViewController: settingsController)
         
-        // iOS 15+ sheet presentation
-        if #available(iOS 15.0, *) {
-            if let sheet = navigationController.sheetPresentationController {
-                sheet.detents = [.medium()]
-                sheet.prefersGrabberVisible = true
-            }
-        } else {
-            // iOS 14 fallback - full screen modal
-            navigationController.modalPresentationStyle = .formSheet
-        }
+        // Full screen modal presentation
+        navigationController.modalPresentationStyle = .formSheet
         
         present(navigationController, animated: true)
     }
@@ -1652,7 +1679,72 @@ class AppListViewController: UIViewController {
     }
     
     @objc private func downloadAppTapped() {
-        showDownloadAppAlert()
+        checkClipboardForAppStoreURL()
+    }
+    
+    private func checkClipboardForAppStoreURL() {
+        guard let clipboardText = UIPasteboard.general.string else {
+            showDownloadAppAlert()
+            return
+        }
+        
+        // Check if clipboard contains App Store URL
+        if isAppStoreURL(clipboardText) {
+            // Directly download the app from clipboard
+            downloadApp(with: clipboardText)
+        } else {
+            // Show alert for invalid clipboard content
+            showInvalidClipboardAlert(with: clipboardText)
+        }
+    }
+    
+    private func isAppStoreURL(_ text: String) -> Bool {
+        let lowercaseText = text.lowercased()
+        
+        // Check for common App Store URL patterns
+        let appStorePatterns = [
+            "apps.apple.com",
+            "itunes.apple.com",
+            "app-store.com",
+            "appstore.com"
+        ]
+        
+        // Check if URL contains any App Store domain
+        for pattern in appStorePatterns {
+            if lowercaseText.contains(pattern) {
+                return true
+            }
+        }
+        
+        // Check for App Store ID pattern (id followed by numbers)
+        if lowercaseText.contains("id") {
+            let regex = try? NSRegularExpression(pattern: "id\\d+", options: .caseInsensitive)
+            let range = NSRange(location: 0, length: text.count)
+            return regex?.firstMatch(in: text, options: [], range: range) != nil
+        }
+        
+        return false
+    }
+    
+    private func showInvalidClipboardAlert(with clipboardText: String) {
+        let truncatedText = clipboardText.count > 50 ? String(clipboardText.prefix(50)) + "..." : clipboardText
+        
+        let alert = UIAlertController(
+            title: "Invalid App Store Link",
+            message: "The clipboard content is not a valid App Store URL:\n\n\(truncatedText)\n\nWould you like to enter a link manually?",
+            preferredStyle: .alert
+        )
+        
+        let enterManuallyAction = UIAlertAction(title: "Enter Manually", style: .default) { [weak self] _ in
+            self?.showDownloadAppAlert()
+        }
+        
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
+        
+        alert.addAction(enterManuallyAction)
+        alert.addAction(cancelAction)
+        
+        present(alert, animated: true)
     }
     
     private func showDownloadAppAlert() {
@@ -1665,6 +1757,11 @@ class AppListViewController: UIViewController {
         alert.addTextField { textField in
             textField.placeholder = "App Link"
             textField.keyboardType = .URL
+            
+            // Pre-fill with clipboard content if it exists (even if not an App Store URL)
+            if let clipboardText = UIPasteboard.general.string, !clipboardText.isEmpty {
+                textField.text = clipboardText
+            }
         }
         
         let downloadAction = UIAlertAction(title: "Download", style: .default) { [weak self] _ in
@@ -1686,7 +1783,7 @@ class AppListViewController: UIViewController {
             return
         }
         
-        showVersionSelectionAlert(for: appId)
+        showVersionSelectionAlert(for: appId, appName: nil)
     }
     
     private func extractAppId(from link: String) -> Int64? {
@@ -1699,25 +1796,40 @@ class AppListViewController: UIViewController {
         return nil
     }
     
-    private func showVersionSelectionAlert(for appId: Int64) {
+    private func showVersionSelectionAlert(for appId: Int64, appName: String?) {
+        // Check user preference for downloads
+        switch downloadVersionSelectionMethod {
+        case .appStore:
+            fetchVersionsFromServer(for: appId)
+            return
+        case .manual:
+            showManualVersionInput(for: appId)
+            return
+        case .askEachTime:
+            break // Continue with dialog
+        }
+        
+        let title = appName != nil ? "Download \(appName!)" : "Download Version"
+        let message = appName != nil ? "Choose how to select the version for \(appName!):" : "Choose how to select the app version:"
+        
         let alert = UIAlertController(
-            title: "Version ID",
-            message: "Do you want to enter the version ID manually or request the list of version IDs from the server?",
+            title: title,
+            message: message,
             preferredStyle: .alert
         )
+        
+        let appStoreAction = UIAlertAction(title: "App Store", style: .default) { [weak self] _ in
+            self?.fetchVersionsFromServer(for: appId)
+        }
         
         let manualAction = UIAlertAction(title: "Manual", style: .default) { [weak self] _ in
             self?.showManualVersionInput(for: appId)
         }
         
-        let serverAction = UIAlertAction(title: "Server", style: .default) { [weak self] _ in
-            self?.fetchVersionsFromServer(for: appId)
-        }
-        
         let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
         
+        alert.addAction(appStoreAction)
         alert.addAction(manualAction)
-        alert.addAction(serverAction)
         alert.addAction(cancelAction)
         
         present(alert, animated: true)
@@ -1848,8 +1960,9 @@ class AppListViewController: UIViewController {
                         return
                     }
                     
-                    if let trackId = results[0]["trackId"] as? Int64 {
-                        self?.showVersionSelectionAlert(for: trackId)
+                    if let trackId = results[0]["trackId"] as? Int64,
+                       let appName = results[0]["trackName"] as? String {
+                        self?.showVersionSelectionAlert(for: trackId, appName: appName)
                     }
                 } catch {
                     self?.showAlert(title: "JSON Error", message: error.localizedDescription)
@@ -2033,7 +2146,7 @@ class AppListViewController: UIViewController {
         debugLog("🔄 Starting UI Cache rebuild with loading dialog...")
         
         // Show loading dialog like TrollStore does
-        showLoadingDialog(title: "Rebuilding Icon Cache", message: "Your device will respring when finished")
+        showLoadingDialog(title: "Rebuilding Icon Cache", message: "Your device will respring when finished. Please do not close the app.")
         
         // Perform operation on background queue
         DispatchQueue.global(qos: .default).async { [weak self] in
@@ -2137,24 +2250,36 @@ class AppListViewController: UIViewController {
             return
         }
         
+        // Check user preference for spoofing
+        switch spoofVersionSelectionMethod {
+        case .appStore:
+            fetchVersionsForSpoof(for: app, bundleId: bundleId)
+            return
+        case .manual:
+            showManualVersionSpoofInput(for: app)
+            return
+        case .askEachTime:
+            break // Continue with dialog
+        }
+        
         let alert = UIAlertController(
             title: "Spoof App Version",
-            message: "Do you want to enter the version manually or select from available server versions for \(app.name)?",
+            message: "Choose how to select the version for \(app.name):",
             preferredStyle: .alert
         )
+        
+        let appStoreAction = UIAlertAction(title: "App Store", style: .default) { _ in
+            self.fetchVersionsForSpoof(for: app, bundleId: bundleId)
+        }
         
         let manualAction = UIAlertAction(title: "Manual", style: .default) { _ in
             self.showManualVersionSpoofInput(for: app)
         }
         
-        let serverAction = UIAlertAction(title: "Server", style: .default) { _ in
-            self.fetchVersionsForSpoof(for: app, bundleId: bundleId)
-        }
-        
         let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
         
+        alert.addAction(appStoreAction)
         alert.addAction(manualAction)
-        alert.addAction(serverAction)
         alert.addAction(cancelAction)
         
         present(alert, animated: true)
