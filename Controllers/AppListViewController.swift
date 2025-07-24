@@ -15,7 +15,6 @@ class AppListViewController: UIViewController {
     private var currentSelectionMode: SelectionMode = .block
     private var selectedApps: Set<IndexPath> = []
     private var blockedApps: [String: String] = [:] // bundleId -> originalVersion
-    private var spoofedApps: [String: String] = [:] // bundleId -> originalVersion
     var debugMessages: [String] = []
     private var loadingAlert: UIAlertController?
     
@@ -35,15 +34,6 @@ class AppListViewController: UIViewController {
         }
     }
     
-    private var spoofVersionSelectionMethod: VersionSelectionMethod {
-        get {
-            let rawValue = UserDefaults.standard.string(forKey: "spoofVersionSelectionMethod") ?? VersionSelectionMethod.askEachTime.rawValue
-            return VersionSelectionMethod(rawValue: rawValue) ?? .askEachTime
-        }
-        set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: "spoofVersionSelectionMethod")
-        }
-    }
     
     private lazy var searchController: UISearchController = {
         let searchController = UISearchController(searchResultsController: nil)
@@ -118,7 +108,6 @@ class AppListViewController: UIViewController {
         setupUI()
         setupKeyboardNotifications()
         loadBlockedApps()
-        loadSpoofedApps()
         loadInstalledApps()
     }
     
@@ -422,10 +411,7 @@ class AppListViewController: UIViewController {
         DispatchQueue.global(qos: .default).async { [weak self] in
             guard let self = self else { return }
             
-            // Reset all spoofed versions first (no UI cache needed)
-            self.resetAllVersionsInternal()
-            
-            // Then unblock all updates (with UI cache rebuild)
+            // Unblock all updates (with UI cache rebuild)
             self.unblockAllUpdatesInternal()
             
             DispatchQueue.main.async {
@@ -452,23 +438,6 @@ class AppListViewController: UIViewController {
         }
     }
     
-    func resetAllVersions() {
-        debugLog("🔄 Starting reset all versions...")
-        
-        showLoadingDialog(title: "Resetting Versions", message: "Restoring original app versions...")
-        
-        DispatchQueue.global(qos: .default).async { [weak self] in
-            guard let self = self else { return }
-            
-            self.resetAllVersionsInternal()
-            
-            DispatchQueue.main.async {
-                self.hideLoadingDialog()
-                self.showAlert(title: "Versions Reset", message: "All app versions have been reset to original.")
-                self.loadInstalledApps() // Reload to show changes
-            }
-        }
-    }
     
     private func unblockAllUpdatesInternal() {
         guard let helperPath = rootHelperPath() else {
@@ -506,40 +475,6 @@ class AppListViewController: UIViewController {
         rebuildUICache()
     }
     
-    private func resetAllVersionsInternal() {
-        guard let helperPath = rootHelperPath() else {
-            debugLog("❌ Could not find root helper")
-            return
-        }
-        
-        var restoredCount = 0
-        
-        // Iterate through all spoofed apps
-        for (bundleIdentifier, originalVersion) in spoofedApps {
-            // Find the app bundle path
-            if let app = apps.first(where: { $0.bundleIdentifier == bundleIdentifier }) {
-                var stdOut: NSString?
-                var stdErr: NSString?
-                
-                let result = spawnRoot(helperPath, ["spoof_app_version", app.bundleURL.path, originalVersion], &stdOut, &stdErr)
-                
-                if result == 0 {
-                    restoredCount += 1
-                    debugLog("✅ Restored version for: \(app.name) to \(originalVersion)")
-                } else {
-                    debugLog("❌ Failed to restore version for: \(app.name)")
-                }
-            }
-        }
-        
-        // Clear spoofed apps list
-        spoofedApps.removeAll()
-        saveSpoofedApps()
-        
-        debugLog("✅ Restored versions for \(restoredCount) apps")
-        
-        // No UI cache rebuild needed for version changes
-    }
     
     
     // MARK: - Update Blocking
@@ -557,18 +492,6 @@ class AppListViewController: UIViewController {
         }
     }
     
-    private func loadSpoofedApps() {
-        if let data = UserDefaults.standard.data(forKey: "spoofedApps"),
-           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
-            spoofedApps = decoded
-        }
-    }
-    
-    private func saveSpoofedApps() {
-        if let encoded = try? JSONEncoder().encode(spoofedApps) {
-            UserDefaults.standard.set(encoded, forKey: "spoofedApps")
-        }
-    }
     
     private func blockUpdateForApp(_ app: AppModel) {
         debugLog("🔍 Attempting to block updates for: \(app.name)")
@@ -1905,34 +1828,10 @@ class AppListViewController: UIViewController {
         
         debugLog("✅ Found target app: \(app.name), version: \(app.version), bundleId: \(app.bundleIdentifier)")
         
-        // Check if app is spoofed
-        if let originalVersion = spoofedApps[app.bundleIdentifier] {
-            debugLog("🎭 App is spoofed. Original: \(originalVersion), Displayed: \(app.version)")
-            return "Currently installed: \(originalVersion) (Original)\nDisplayed version: \(app.version) (Spoofed)"
-        } else {
-            debugLog("📱 App is not spoofed. Version: \(app.version)")
-            return "Currently installed: \(app.version)"
-        }
+        debugLog("📱 App version: \(app.version)")
+        return "Currently installed: \(app.version)"
     }
     
-    private func showSpoofedAppUpdateWarning(for app: AppModel) {
-        let alert = UIAlertController(
-            title: "Spoofed App Warning",
-            message: "This app (\(app.name)) currently has a spoofed version. After updating/downgrading, the app version will no longer be spoofed and you will need to spoof it again if desired.\n\nDo you want to continue?",
-            preferredStyle: .alert
-        )
-        
-        let continueAction = UIAlertAction(title: "Continue", style: .default) { [weak self] _ in
-            self?.proceedWithDownload(for: app)
-        }
-        
-        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
-        
-        alert.addAction(continueAction)
-        alert.addAction(cancelAction)
-        
-        present(alert, animated: true)
-    }
     
     private func proceedWithDownload(for app: AppModel) {
         debugLog("🚀 proceedWithDownload called for app: \(app.name), version: \(app.version)")
@@ -1989,12 +1888,6 @@ class AppListViewController: UIViewController {
     
     private func downloadAppShortcut(for app: AppModel) {
         debugLog("🚀 downloadAppShortcut called for app: \(app.name), version: \(app.version)")
-        
-        // Check if app is spoofed and show warning
-        if spoofedApps[app.bundleIdentifier] != nil {
-            showSpoofedAppUpdateWarning(for: app)
-            return
-        }
         
         // Store the current app for version selection
         currentAppForVersionSelection = app
@@ -2095,14 +1988,6 @@ class AppListViewController: UIViewController {
         case .unblockedUpdates:
             return apps.filter { app in
                 blockedApps[app.bundleIdentifier] == nil
-            }
-        case .spoofedVersions:
-            return apps.filter { app in
-                spoofedApps[app.bundleIdentifier] != nil
-            }
-        case .unspoofedVersions:
-            return apps.filter { app in
-                spoofedApps[app.bundleIdentifier] == nil
             }
         }
     }
@@ -2219,15 +2104,6 @@ class AppListViewController: UIViewController {
             noResultsTitleLabel.text = "No Allowed Updates"
             noResultsMessageLabel.text = "All your apps have blocked updates"
             
-        case .spoofedVersions:
-            noResultsImageView.image = UIImage(systemName: "theatermasks")
-            noResultsTitleLabel.text = "No Spoofed Versions"
-            noResultsMessageLabel.text = "You haven't spoofed any app versions yet"
-            
-        case .unspoofedVersions:
-            noResultsImageView.image = UIImage(systemName: "number.circle")
-            noResultsTitleLabel.text = "No Original Versions"
-            noResultsMessageLabel.text = "All your apps have spoofed versions"
         }
     }
     
@@ -2360,259 +2236,6 @@ class AppListViewController: UIViewController {
         present(alert, animated: true)
     }
     
-    private func showVersionSpoofingOptions(for app: AppModel) {
-        let infoPlistPath = app.bundleURL.appendingPathComponent("Info.plist").path
-        guard let infoPlist = NSDictionary(contentsOfFile: infoPlistPath),
-              let bundleId = infoPlist["CFBundleIdentifier"] as? String else {
-            showAlert(title: "Error", message: "Could not read app info")
-            return
-        }
-        
-        // Check user preference for spoofing
-        switch spoofVersionSelectionMethod {
-        case .appStore:
-            fetchVersionsForSpoof(for: app, bundleId: bundleId)
-            return
-        case .manual:
-            showManualVersionSpoofInput(for: app)
-            return
-        case .askEachTime:
-            break // Continue with dialog
-        }
-        
-        let alert = UIAlertController(
-            title: "Spoof App Version",
-            message: "Choose how to select the version for \(app.name):",
-            preferredStyle: .alert
-        )
-        
-        let appStoreAction = UIAlertAction(title: "App Store", style: .default) { _ in
-            self.fetchVersionsForSpoof(for: app, bundleId: bundleId)
-        }
-        
-        let manualAction = UIAlertAction(title: "Manual", style: .default) { _ in
-            self.showManualVersionSpoofInput(for: app)
-        }
-        
-        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
-        
-        alert.addAction(appStoreAction)
-        alert.addAction(manualAction)
-        alert.addAction(cancelAction)
-        
-        present(alert, animated: true)
-    }
-    
-    private func showManualVersionSpoofInput(for app: AppModel) {
-        let alert = UIAlertController(
-            title: "Manual Version Entry",
-            message: "Enter the version number to spoof for \(app.name)",
-            preferredStyle: .alert
-        )
-        
-        alert.addTextField { textField in
-            textField.placeholder = "e.g., 1.2.3"
-            textField.keyboardType = .decimalPad
-        }
-        
-        alert.addAction(UIAlertAction(title: "Spoof", style: .default) { _ in
-            if let version = alert.textFields?.first?.text, !version.isEmpty {
-                self.spoofAppVersion(app: app, version: version)
-            }
-        })
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        present(alert, animated: true)
-    }
-    
-    private func fetchVersionsForSpoof(for app: AppModel, bundleId: String) {
-        // First get the app ID from iTunes
-        let url = "https://itunes.apple.com/lookup?bundleId=\(bundleId)&limit=1&media=software"
-        guard let requestURL = URL(string: url) else { return }
-        
-        URLSession.shared.dataTask(with: requestURL) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    self?.showAlert(title: "Error", message: error.localizedDescription)
-                    return
-                }
-                
-                guard let data = data else {
-                    self?.showAlert(title: "Error", message: "No data received")
-                    return
-                }
-                
-                do {
-                    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                    let results = json?["results"] as? [[String: Any]] ?? []
-                    
-                    if results.isEmpty {
-                        self?.showAlert(title: "Error", message: "App not found in App Store")
-                        return
-                    }
-                    
-                    if let trackId = results[0]["trackId"] as? Int64 {
-                        self?.fetchVersionHistoryForSpoof(for: app, appId: trackId)
-                    }
-                } catch {
-                    self?.showAlert(title: "JSON Error", message: error.localizedDescription)
-                }
-            }
-        }.resume()
-    }
-    
-    private func fetchVersionHistoryForSpoof(for app: AppModel, appId: Int64) {
-        let serverURL = "https://apis.bilin.eu.org/history/"
-        guard let url = URL(string: "\(serverURL)\(appId)") else { return }
-        
-        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    self?.showAlert(title: "Error", message: error.localizedDescription)
-                    return
-                }
-                
-                guard let data = data else {
-                    self?.showAlert(title: "Error", message: "No data received from server")
-                    return
-                }
-                
-                do {
-                    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                    let versionData = json?["data"] as? [[String: Any]] ?? []
-                    
-                    if versionData.isEmpty {
-                        self?.showAlert(title: "Error", message: "No version history found for this app")
-                        return
-                    }
-                    
-                    self?.showVersionSpoofListAlert(for: app, versions: versionData)
-                } catch {
-                    self?.showAlert(title: "JSON Error", message: error.localizedDescription)
-                }
-            }
-        }.resume()
-    }
-    
-    private func showVersionSpoofListAlert(for app: AppModel, versions: [[String: Any]]) {
-        // Get current version message for reference
-        let currentVersionMessage = getCurrentVersionMessageForApp(app: app)
-        
-        let alert = UIAlertController(
-            title: "Select Version to Spoof",
-            message: "Choose a version for \(app.name)\n\n\(currentVersionMessage)",
-            preferredStyle: .actionSheet
-        )
-        
-        for version in versions {
-            if let bundleVersion = version["bundle_version"] as? String {
-                let actionTitle = "Version \(bundleVersion)"
-                
-                alert.addAction(UIAlertAction(title: actionTitle, style: .default) { _ in
-                    self.spoofAppVersion(app: app, version: bundleVersion)
-                })
-            }
-        }
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = self.view
-            popover.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 0, height: 0)
-            popover.permittedArrowDirections = []
-        }
-        
-        present(alert, animated: true)
-    }
-    
-    private func getCurrentVersionMessageForApp(app: AppModel) -> String {
-        debugLog("🔍 getCurrentVersionMessageForApp called for app: \(app.name), version: \(app.version)")
-        
-        // Check if app is spoofed
-        if let originalVersion = spoofedApps[app.bundleIdentifier] {
-            debugLog("🎭 App is spoofed. Original: \(originalVersion), Displayed: \(app.version)")
-            return "Currently installed: \(originalVersion) (Original)\nDisplayed version: \(app.version) (Spoofed)"
-        } else {
-            debugLog("📱 App is not spoofed. Version: \(app.version)")
-            return "Currently installed: \(app.version)"
-        }
-    }
-    
-    private func spoofAppVersion(app: AppModel, version: String) {
-        debugLog("🎭 Spoofing version for \(app.name) to \(version)")
-        
-        // Save original version before spoofing
-        if spoofedApps[app.bundleIdentifier] == nil {
-            spoofedApps[app.bundleIdentifier] = app.version
-            saveSpoofedApps()
-            debugLog("💾 Saved original version: \(app.version)")
-        }
-        
-        let helperPath = rootHelperPath()!
-        let appBundlePath = app.bundleURL.path
-        
-        var stdOut: NSString?
-        var stdErr: NSString?
-        
-        debugLog("🚀 Spawning root helper to spoof app version")
-        let result = spawnRoot(helperPath, ["spoof_app_version", appBundlePath, version], &stdOut, &stdErr)
-        
-        if let output = stdOut as String? {
-            debugLog("📤 Root helper output: \(output)")
-        }
-        if let error = stdErr as String? {
-            debugLog("❌ Root helper error: \(error)")
-        }
-        
-        if result == 0 {
-            debugLog("✅ Successfully spoofed app version")
-            showAlert(title: "Success", message: "Successfully spoofed app version for \(app.name) to \(version)")
-            loadInstalledApps() // Reload apps to show changes
-        } else {
-            debugLog("❌ Root helper failed with exit code: \(result)")
-            showAlert(title: "Error", message: "Failed to spoof app version. Check debug logs for details.")
-        }
-    }
-    
-    private func restoreSpoofedAppVersion(app: AppModel) {
-        guard let originalVersion = spoofedApps[app.bundleIdentifier] else {
-            showAlert(title: "Error", message: "No original version found for \(app.name)")
-            return
-        }
-        
-        debugLog("🔄 Restoring original version for \(app.name) from \(app.version) to \(originalVersion)")
-        
-        let helperPath = rootHelperPath()!
-        let appBundlePath = app.bundleURL.path
-        
-        var stdOut: NSString?
-        var stdErr: NSString?
-        
-        debugLog("🚀 Spawning root helper to restore app version")
-        let result = spawnRoot(helperPath, ["spoof_app_version", appBundlePath, originalVersion], &stdOut, &stdErr)
-        
-        if let output = stdOut as String? {
-            debugLog("📤 Root helper output: \(output)")
-        }
-        if let error = stdErr as String? {
-            debugLog("❌ Root helper error: \(error)")
-        }
-        
-        if result == 0 {
-            debugLog("✅ Successfully restored app version")
-            
-            // Remove from spoofed apps
-            spoofedApps.removeValue(forKey: app.bundleIdentifier)
-            saveSpoofedApps()
-            
-            showAlert(title: "Success", message: "Successfully restored original version for \(app.name)")
-            loadInstalledApps() // Reload apps to show changes
-        } else {
-            debugLog("❌ Root helper failed with exit code: \(result)")
-            showAlert(title: "Error", message: "Failed to restore app version. Check debug logs for details.")
-        }
-    }
 }
 
 // MARK: - UITableViewDataSource
@@ -2628,8 +2251,7 @@ extension AppListViewController: UITableViewDataSource {
         
         let app = isSearching ? filteredApps[indexPath.row] : apps[indexPath.row]
         let isBlocked = blockedApps[app.bundleIdentifier] != nil
-        let isSpoofed = spoofedApps[app.bundleIdentifier] != nil
-        cell.configure(with: app, isBlocked: isBlocked, isSpoofed: isSpoofed)
+        cell.configure(with: app, isBlocked: isBlocked)
         
         return cell
     }
@@ -2688,23 +2310,7 @@ extension AppListViewController: UITableViewDelegate {
         blockAction.backgroundColor = isBlocked ? .systemGreen : .systemOrange
         blockAction.image = UIImage(systemName: isBlocked ? "checkmark.shield" : "shield.slash")
         
-        let isSpoofed = spoofedApps[app.bundleIdentifier] != nil
-        let spoofVersionAction = UIContextualAction(
-            style: .normal,
-            title: isSpoofed ? "Restore Version" : "Spoof Version"
-        ) { [weak self] _, _, completion in
-            if isSpoofed {
-                self?.restoreSpoofedAppVersion(app: app)
-            } else {
-                self?.showVersionSpoofingOptions(for: app)
-            }
-            completion(true)
-        }
-        
-        spoofVersionAction.backgroundColor = isSpoofed ? .systemBlue : .systemPurple
-        spoofVersionAction.image = UIImage(systemName: isSpoofed ? "arrow.counterclockwise" : "number.circle")
-        
-        return UISwipeActionsConfiguration(actions: [blockAction, spoofVersionAction])
+        return UISwipeActionsConfiguration(actions: [blockAction])
     }
     
     func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
@@ -2740,19 +2346,6 @@ extension AppListViewController: UITableViewDelegate {
                 }
             }
             
-            // Spoof/Restore Version Action
-            let isSpoofed = self.spoofedApps[app.bundleIdentifier] != nil
-            let spoofAction = UIAction(
-                title: isSpoofed ? "Restore Original Version" : "Spoof App Version",
-                image: UIImage(systemName: isSpoofed ? "arrow.counterclockwise" : "number.circle")
-            ) { _ in
-                if isSpoofed {
-                    self.restoreSpoofedAppVersion(app: app)
-                } else {
-                    self.showVersionSpoofingOptions(for: app)
-                }
-            }
-            
             // Open in App Store Action
             let appStoreAction = UIAction(
                 title: "Open in App Store",
@@ -2761,7 +2354,7 @@ extension AppListViewController: UITableViewDelegate {
                 self.openAppInAppStore(app: app)
             }
             
-            return UIMenu(children: [openAction, appStoreAction, updateAction, blockAction, spoofAction])
+            return UIMenu(children: [openAction, appStoreAction, updateAction, blockAction])
         }
     }
     

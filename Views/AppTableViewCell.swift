@@ -73,7 +73,7 @@ class AppTableViewCell: UITableViewCell {
         ])
     }
     
-    func configure(with app: AppModel, isBlocked: Bool = false, isSpoofed: Bool = false) {
+    func configure(with app: AppModel, isBlocked: Bool = false) {
         appNameLabel.text = app.name
         appVersionLabel.text = "Version \(app.version)"
         appIconImageView.image = app.icon ?? UIImage(systemName: "app.dashed")

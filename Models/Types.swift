@@ -18,16 +18,12 @@ enum FilterType: CaseIterable {
     case all
     case blockedUpdates
     case unblockedUpdates
-    case spoofedVersions
-    case unspoofedVersions
     
     var title: String {
         switch self {
         case .all: return "All Apps"
         case .blockedUpdates: return "Update Blocked"
         case .unblockedUpdates: return "Update Allowed"
-        case .spoofedVersions: return "Spoofed Versions"
-        case .unspoofedVersions: return "Original Versions"
         }
     }
 }
@@ -69,26 +65,22 @@ enum VersionSelectionMethod: String, CaseIterable {
 
 enum VersionSelectionType {
     case download
-    case spoof
     
     var title: String {
         switch self {
         case .download: return "Download Version Selection"
-        case .spoof: return "Spoof Version Selection"
         }
     }
     
     var userDefaultsKey: String {
         switch self {
         case .download: return "downloadVersionSelectionMethod"
-        case .spoof: return "spoofVersionSelectionMethod"
         }
     }
     
     var description: String {
         switch self {
         case .download: return "Choose your preferred method for downloading app versions. This will skip the dialog when using the download feature."
-        case .spoof: return "Choose your preferred method for spoofing app versions. This will skip the dialog when using the spoof feature."
         }
     }
 }

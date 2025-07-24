@@ -273,7 +273,6 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Operations:\n");
             fprintf(stderr, "  block_updates <app_bundle_path>\n");
             fprintf(stderr, "  restore_updates <app_bundle_path>\n");
-            fprintf(stderr, "  spoof_app_version <app_bundle_path> <version>\n");
             fprintf(stderr, "  rebuild_uicache\n");
             return 1;
         }
@@ -403,7 +402,6 @@ int main(int argc, char *argv[]) {
         
         // Extract container path from app bundle path
         NSString *containerPath = [appBundlePath stringByDeletingLastPathComponent];
-        NSString *infoPlistPath = [appBundlePath stringByAppendingPathComponent:@"Info.plist"];
         NSString *itunesMetadataPath = [containerPath stringByAppendingPathComponent:@"iTunesMetadata.plist"];
         NSString *itunesBackupPath = [containerPath stringByAppendingPathComponent:@"iTunesMetadata.plist.muffinstore_backup"];
         
@@ -454,42 +452,6 @@ int main(int argc, char *argv[]) {
                 }
             } else {
                 fprintf(stderr, "❌ No backup found\n");
-                return 1;
-            }
-            
-        } else if ([operation isEqualToString:@"spoof_app_version"]) {
-            if (!version) {
-                fprintf(stderr, "❌ Version required for spoof_app_version operation\n");
-                return 1;
-            }
-            
-            fprintf(stdout, "🎭 Spoofing app version to: %s\n", [version UTF8String]);
-            
-            // Check if Info.plist exists
-            if (![fileManager fileExistsAtPath:infoPlistPath]) {
-                fprintf(stderr, "❌ Info.plist not found at %s\n", [infoPlistPath UTF8String]);
-                return 1;
-            }
-            
-            // Read and modify Info.plist
-            NSMutableDictionary *infoPlist = [NSMutableDictionary dictionaryWithContentsOfFile:infoPlistPath];
-            if (!infoPlist) {
-                fprintf(stderr, "❌ Could not read Info.plist\n");
-                return 1;
-            }
-            
-            NSString *originalVersion = infoPlist[@"CFBundleShortVersionString"];
-            if (originalVersion) {
-                fprintf(stdout, "📱 Original app version: %s\n", [originalVersion UTF8String]);
-            }
-            
-            // Update version in Info.plist
-            infoPlist[@"CFBundleShortVersionString"] = version;
-            
-            if ([infoPlist writeToFile:infoPlistPath atomically:YES]) {
-                fprintf(stdout, "✅ Successfully spoofed app version to %s\n", [version UTF8String]);
-            } else {
-                fprintf(stderr, "❌ Failed to write Info.plist\n");
                 return 1;
             }
             

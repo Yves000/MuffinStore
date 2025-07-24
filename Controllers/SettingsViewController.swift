@@ -53,7 +53,7 @@ class SettingsViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch section {
         case 0: return 1 // Preferences
-        case 1: return 3 // Reset options
+        case 1: return 2 // Reset options
         case 2: return 1 // Debug
         default: return 0
         }
@@ -107,11 +107,6 @@ class SettingsViewController: UITableViewController {
                 cell.textLabel?.textColor = .systemOrange
                 cell.imageView?.image = UIImage(systemName: "shield.slash")
                 cell.imageView?.tintColor = .systemOrange
-            case 2:
-                cell.textLabel?.text = "Reset All Versions"
-                cell.textLabel?.textColor = .systemBlue
-                cell.imageView?.image = UIImage(systemName: "number.circle")
-                cell.imageView?.tintColor = .systemBlue
             default:
                 break
             }
@@ -137,8 +132,8 @@ class SettingsViewController: UITableViewController {
         switch indexPath.section {
         case 0:
             // Preferences
-            let versionSelectionOverviewVC = VersionSelectionOverviewViewController()
-            navigationController?.pushViewController(versionSelectionOverviewVC, animated: true)
+            let versionSelectionVC = VersionSelectionViewController(type: .download)
+            navigationController?.pushViewController(versionSelectionVC, animated: true)
         case 1:
             // Reset options
             switch indexPath.row {
@@ -146,8 +141,6 @@ class SettingsViewController: UITableViewController {
                 showResetAllConfirmation()
             case 1:
                 showUnblockAllConfirmation()
-            case 2:
-                showResetVersionsConfirmation()
             default:
                 break
             }
@@ -165,7 +158,7 @@ class SettingsViewController: UITableViewController {
     private func showResetAllConfirmation() {
         let alert = UIAlertController(
             title: "Reset All Changes",
-            message: "This will unblock all app updates and reset all spoofed versions to their original state. Your device will respring when finished. Please do not close the app.",
+            message: "This will unblock all app updates. Your device will respring when finished. Please do not close the app.",
             preferredStyle: .alert
         )
         
@@ -192,20 +185,6 @@ class SettingsViewController: UITableViewController {
         present(alert, animated: true)
     }
     
-    private func showResetVersionsConfirmation() {
-        let alert = UIAlertController(
-            title: "Reset All Versions",
-            message: "This will reset all spoofed app versions to their original state. No respring required.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Reset Versions", style: .destructive) { _ in
-            self.resetAllVersions()
-        })
-        
-        present(alert, animated: true)
-    }
     
     private func resetAllChanges() {
         appListController?.resetAllChanges()
@@ -217,9 +196,5 @@ class SettingsViewController: UITableViewController {
         dismiss(animated: true)
     }
     
-    private func resetAllVersions() {
-        appListController?.resetAllVersions()
-        dismiss(animated: true)
-    }
     
 }
